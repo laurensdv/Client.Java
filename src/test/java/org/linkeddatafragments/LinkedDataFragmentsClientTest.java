@@ -21,7 +21,7 @@ public class LinkedDataFragmentsClientTest {
 
     @Before
     public void setUp() {
-        LinkedDataFragmentGraph ldfg = new LinkedDataFragmentGraph("http://data.linkeddatafragments.org/dbpedia");
+        LinkedDataFragmentGraph ldfg = new LinkedDataFragmentGraph("http://data.linkeddatafragments.org/dbpedia2014");
         model = ModelFactory.createModelForGraph(ldfg);
     }
 
