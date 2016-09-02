@@ -22,14 +22,7 @@ import org.linkeddatafragments.model.LinkedDataFragmentGraph;
 
 public class OpExecutorLDF extends OpExecutor {
 
-    public final static OpExecutorFactory opExecFactoryLDF = new OpExecutorFactory()
-    {
-        @Override
-        public OpExecutor create(ExecutionContext execCxt)
-        {
-            return new OpExecutorLDF(execCxt) ;
-        }
-    };
+    public final static OpExecutorFactory opExecFactoryLDF = execCxt1 -> new OpExecutorLDF(execCxt1);
 
     private boolean isForLDF;
 
@@ -85,7 +78,12 @@ public class OpExecutorLDF extends OpExecutor {
 
         LinkedDataFragmentGraph graph = (LinkedDataFragmentGraph)execCxt.getActiveGraph() ;
 
+        BasicPattern pattern = opBGP.getPattern();
+
         return executeBGP(graph, opBGP, input, null, execCxt);
+
+        //return SolverUtil.solve(pattern, input, execCxt, graph,
+        //        SolverUtil.DEFAULT_SOLVER_EXECUTOR);
     }
 
     /** Execute a BGP (and filters) on a LDF graph, which may be in default storage or it may be a named graph */

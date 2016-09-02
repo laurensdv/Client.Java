@@ -1,7 +1,6 @@
 package org.linkeddatafragments.model;
 
 import com.google.common.primitives.Ints;
-
 import org.apache.jena.graph.*;
 import org.apache.jena.graph.impl.GraphBase;
 import org.apache.jena.graph.impl.GraphMatcher;
@@ -10,15 +9,21 @@ import org.apache.jena.shared.AddDeniedException;
 import org.apache.jena.shared.ClosedException;
 import org.apache.jena.shared.PrefixMapping;
 import org.apache.jena.sparql.engine.main.QC;
+import org.apache.jena.sparql.engine.main.StageBuilder;
+import org.apache.jena.sparql.engine.main.StageGenerator;
 import org.apache.jena.sparql.engine.optimizer.reorder.ReorderTransformation;
 import org.apache.jena.util.iterator.ClosableIterator;
 import org.apache.jena.util.iterator.ExtendedIterator;
 import org.apache.jena.util.iterator.WrappedIterator;
 import org.linkeddatafragments.client.LinkedDataFragmentsClient;
-import org.linkeddatafragments.solver.LDFStatistics;
-import org.linkeddatafragments.solver.LinkedDataFragmentEngine;
-import org.linkeddatafragments.solver.OpExecutorLDF;
-import org.linkeddatafragments.solver.ReorderTransformationLDF;
+import org.linkeddatafragments.solver.*;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.AsyncResult;
+
+import java.util.concurrent.Future;
+
+// TODO check if optimization is possible cfr
+// http://parliament.semwebcentral.org/javadoc/com/bbn/parliament/jena/query/optimize/ReorderQueryIterTriplePattern.html#ReorderQueryIterTriplePattern(com.hp.hpl.jena.sparql.core.BasicPattern, com.hp.hpl.jena.sparql.engine.QueryIterator, com.hp.hpl.jena.sparql.engine.ExecutionContext)
 
 public class LinkedDataFragmentGraph extends GraphBase {
     protected final LinkedDataFragmentsClient ldfClient;
@@ -28,7 +33,18 @@ public class LinkedDataFragmentGraph extends GraphBase {
     static {
         // Register OpExecutor
         QC.setFactory(ARQ.getContext(), OpExecutorLDF.opExecFactoryLDF);
+
+        //Set Stagegenerator
+        StageGenerator orig = (StageGenerator) ARQ.getContext()
+                .get(ARQ.stageGenerator);
+        StageGenerator generator = new LDFStageGenerator(orig);
+        StageBuilder.setGenerator(ARQ.getContext(), generator);
+
+        //Register Engine
         LinkedDataFragmentEngine.register();
+
+        //Register optimizer
+        LDFOptimize.register();
     }
 
     public LinkedDataFragmentGraph(String dataSource) {
@@ -63,34 +79,43 @@ public class LinkedDataFragmentGraph extends GraphBase {
         return capabilities;
     }
 
+    @Async
+    private Future<LinkedDataFragment> retrieveFragment(Triple m) throws Exception {
+        LinkedDataFragment ldf = ldfClient.getFragment(ldfClient.getBaseFragment(), m);
+        return new AsyncResult<>(ldf);
+    }
+
     @Override
     protected ExtendedIterator<Triple> graphBaseFind(Triple m) {
         try{
-            LinkedDataFragment ldf = ldfClient.getFragment(ldfClient.getBaseFragment(), m);
-//            ExtendedIterator<Triple> triples = ldf.getTriples();
-//            Iterator<LinkedDataFragment> ldfIterator = LinkedDataFragmentIterator.create(ldf, ldfClient);
-//            while(ldfIterator.hasNext()) {
-//                ldf = ldfIterator.next();
-//                triples = triples.andThen(ldf.getTriples());
-//            }
-            ExtendedIterator<Triple> triples = ExtendedTripleIteratorLDF.create(ldfClient, ldf);
-            return triples;
+            //System.out.println("finding triple "+m.hashCode());
+            Future<LinkedDataFragment> ldf = retrieveFragment(m);
+            //System.out.println("triple retrieving"+m.hashCode());
+            return ExtendedTripleIteratorLDF.create(ldfClient, ldf);
         } catch(Exception e) {
             e.printStackTrace();
             return WrappedIterator.emptyIterator(); //Do not block on error but return empty iterator
         }
     }
 
-    public Long getCount(Triple m) {
-        //System.out.println("count requested");
+    public long getNodeCountInPosition(Node node, int position) throws Exception {
+        return getCount(new Triple(node, Node.ANY, Node.ANY)).get();
+    }
+
+    @Async
+    private Future<Long> retrieveFragmentCount(Triple m) {
         try{
             LinkedDataFragment ldf = ldfClient.getFragment(ldfClient.getBaseFragment(), m);
             Long count = ldf.getMatchCount();
-            //System.out.println(String.format("%s found", count));
-            return count;
+            return new AsyncResult<>(count);
         } catch(Exception e) {
-            return 0L;
+            return new AsyncResult<>(0L);
         }
+    }
+
+    public Future<Long> getCount(Triple m) {
+        Future<Long> count = retrieveFragmentCount(m);
+        return count;
     }
 
     public ReorderTransformation getReorderTransform() {

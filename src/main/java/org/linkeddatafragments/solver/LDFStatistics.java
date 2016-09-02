@@ -27,7 +27,12 @@ public class LDFStatistics implements GraphStatisticsHandler {
     @Override
     public long getStatistic(Node subject, Node predicate, Node object) {
         //System.out.println("statistics requested");
-        return ldfG.getCount(Triple.createMatch(subject, predicate, object));
+        try {
+            return ldfG.getCount(Triple.createMatch(subject, predicate, object)).get();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return 0L;
+        }
     }
 
 }

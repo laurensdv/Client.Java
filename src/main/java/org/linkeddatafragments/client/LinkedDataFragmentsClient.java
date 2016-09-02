@@ -3,15 +3,14 @@ package org.linkeddatafragments.client;
 import com.google.common.base.Optional;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
-
 import org.apache.http.Header;
 import org.apache.http.HeaderElement;
 import org.apache.http.HttpResponse;
+import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpHead;
 import org.apache.http.client.methods.HttpRequestBase;
-import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
-import org.apache.http.impl.nio.client.HttpAsyncClients;
+import org.apache.http.impl.client.HttpClients;
 import org.apache.jena.graph.Graph;
 import org.apache.jena.graph.GraphUtil;
 import org.apache.jena.graph.Triple;
@@ -23,19 +22,16 @@ import org.apache.jena.riot.RDFDataMgr;
 import org.apache.jena.sparql.graph.GraphFactory;
 import org.linkeddatafragments.model.LinkedDataFragment;
 import org.linkeddatafragments.model.LinkedDataFragmentFactory;
-import org.linkeddatafragments.model.LinkedDataFragmentIterator;
 
-import javax.xml.crypto.Data;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Iterator;
-import java.util.concurrent.Future;
 import java.util.zip.GZIPInputStream;
 
 public class LinkedDataFragmentsClient {
     protected Graph tripleModel;  //TODO: use this model to check ground patterns without having to actually fetch a fragment if once had a 200 OK then fine and temp store here.
     protected final String dataSource;
-    protected final CloseableHttpAsyncClient httpAsyncClient = HttpAsyncClients.createDefault();
+    protected final HttpClient httpAsyncClient = HttpClients.createDefault();
     protected final Cache<String, LinkedDataFragment> fragments = CacheBuilder.newBuilder()
             .maximumSize(10000) //Maximum caching size
             .build();
@@ -117,19 +113,19 @@ public class LinkedDataFragmentsClient {
     //        Triple.create(Var.alloc("s"), Var.alloc("p"), Var.alloc("o"));
     // new TriplePattern(patternT);
     public LinkedDataFragment getFragment(String method, String fragmentUrl, Triple tripleTemplate) throws Exception {
-//        String hash = "" + fragmentUrl.hashCode() + tripleTemplate.hashCode();
+        String hash = "" + fragmentUrl.hashCode() + tripleTemplate.hashCode();
 //
-//        Optional<LinkedDataFragment> fragmentOptional = Optional.fromNullable(fragments.getIfPresent(hash));
+        Optional<LinkedDataFragment> fragmentOptional = Optional.fromNullable(fragments.getIfPresent(hash));
 //        // check the fragment cache
-//        if (fragmentOptional.isPresent()) {
-//            return fragmentOptional.get();
-//        }
+        if (fragmentOptional.isPresent()) {
+            return fragmentOptional.get();
+        }
 
         Model fragmentTriples = ModelFactory.createDefaultModel();
         fragmentTriples.getReader().setProperty("WARN_UNQUALIFIED_RDF_ATTRIBUTE","EM_IGNORE");
         fragmentTriples.getReader().setProperty("allowBadURIs","true");
 
-        HttpResponse response = getLinkedDataFragment("GET", fragmentUrl);
+        HttpResponse response = getLinkedDataFragment(method, fragmentUrl);
         //System.out.println(fragmentUrl);
         //String remoteUrl = baseFragment.getUrlToFragment(tripleTemplate);
         //fragmentTriples.read(remoteUrl,"TURTLE");
@@ -140,7 +136,7 @@ public class LinkedDataFragmentsClient {
 //            Model fragmentTriples = getFragmentTriples(dataset);
             fragmentTriples.read(in, null, "TURTLE");
             ldf = LinkedDataFragmentFactory.create(GraphUtil.findAll(fragmentTriples.getGraph()), fragmentTriples.size(), tripleTemplate);
-//        fragments.put(hash, ldf);
+            fragments.put(hash, ldf);
         } else {
             if(response.getStatusLine().getStatusCode() == 200) {
                 Graph g = GraphFactory.createJenaDefaultGraph();
@@ -168,7 +164,6 @@ public class LinkedDataFragmentsClient {
     }
 
     private HttpResponse getLinkedDataFragment(String method, String fragmentUrl) throws InterruptedException, java.util.concurrent.ExecutionException, IOException {
-        httpAsyncClient.start();
         HttpRequestBase request;
         if (method.equalsIgnoreCase("GET")) {
             request = new HttpGet(fragmentUrl);
@@ -177,10 +172,7 @@ public class LinkedDataFragmentsClient {
         }
         request.setHeader("Accept", "text/turtle");
         request.setHeader("Accept-Encoding","gzip");
-        Future<HttpResponse> future = httpAsyncClient.execute(request, null);
-        //TODO return the future instead of synchronizing here...
-        HttpResponse response = future.get();
-        //httpAsyncClient.close();
+        HttpResponse response = httpAsyncClient.execute(request);
         return response;
     }
 }
