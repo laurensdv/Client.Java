@@ -9,7 +9,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Future;
-import java.util.concurrent.Semaphore;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -18,11 +17,9 @@ import java.util.function.Predicate;
  */
 public class ExtendedTripleIteratorLDF implements ExtendedIterator<Triple> {
     protected ExtendedIterator<Triple> triples;
-    protected Iterator<LinkedDataFragment> ldfIterator;
+    protected LinkedDataFragmentIterator ldfIterator;
     protected Future<LinkedDataFragment> ldf;
     protected LinkedDataFragmentsClient ldfClient;
-    private final Semaphore available = new Semaphore(1, true);
-
 
     public ExtendedTripleIteratorLDF(LinkedDataFragmentsClient ldfClient, Future<LinkedDataFragment> ldf) {
         this.ldf = ldf;
@@ -96,13 +93,17 @@ public class ExtendedTripleIteratorLDF implements ExtendedIterator<Triple> {
         if(!hasNext) {
             if(ldfIterator.hasNext()) {
                 triples = ldfIterator.next().getTriples();
-                return true;
+                if(triples.hasNext()) {
+                    return true;
+                } else {
+                    return false;
+                }
             } else {
                 return false;
             }
+        } else {
+            return hasNext;
         }
-
-        return hasNext;
     }
 
     @Override
@@ -112,12 +113,17 @@ public class ExtendedTripleIteratorLDF implements ExtendedIterator<Triple> {
         if(!hasNext) {
             if(ldfIterator.hasNext()) {
                 triples = ldfIterator.next().getTriples();
-                return triples.next();
+                if(triples.hasNext()) {
+                    return triples.next();
+                } else {
+                    return null;
+                }
             } else {
                 return null;
             }
+        } else {
+            return triples.next();
         }
-        return triples.next();
     }
 
     @Override
@@ -128,12 +134,10 @@ public class ExtendedTripleIteratorLDF implements ExtendedIterator<Triple> {
     private void waitForFragmentTriplesReady() {
         try {
             //available.acquire();
-
-            if (triples == null) {
+            if (ldfIterator == null) {
                 //System.out.println("Waiting for iterator to be ready " + ldf.hashCode());
-                LinkedDataFragment ldf = this.ldf.get();
-                triples = ldf.getTriples();
-                ldfIterator = LinkedDataFragmentIterator.create(ldf, this.ldfClient);
+                ldfIterator = LinkedDataFragmentIterator.create(this.ldf, this.ldfClient);
+                triples = ldfIterator.first();
                 //System.out.println("ready " + this.ldf.hashCode());
             }
             //available.release();
